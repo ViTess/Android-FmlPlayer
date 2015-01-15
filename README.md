@@ -15,3 +15,5 @@ BASS Library:http://www.un4seen.com/
     2、支持多种格式音频（需要添加插件，我完全没加插件:D）
     
     3、想到什么再写吧反正就是练手用的
+
+testAudio为Demo
