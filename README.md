@@ -1,7 +1,8 @@
 # Android-OMEPlayer
 
     160421：
-        Fix - 修改项目为gradle
+        Fix - 1、修改项目为gradle
+              2、将BASS库打包为jar引用
 
 基于BASS Library的封装，可直接用于Android
 
