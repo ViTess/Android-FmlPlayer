@@ -1,5 +1,8 @@
 # Android-OMEPlayer
 
+    160421：
+        Fix - 修改项目为gradle
+
 基于BASS Library的封装，可直接用于Android
 
 包含部分BASS FX的音效等
