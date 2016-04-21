@@ -1,4 +1,4 @@
-# Android-OMEPlayer
+# Android-fmlPlayer
 
     160421：
         Fix - 1、修改项目为gradle
