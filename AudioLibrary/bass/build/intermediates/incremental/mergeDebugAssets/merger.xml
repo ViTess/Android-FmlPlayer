@@ -1,2 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<merger version="3"><dataSet config="main"><source path="/home/trs/PLDroidPlayer/AudioLibrary/bass/src/main/assets"/><source path="/home/trs/PLDroidPlayer/AudioLibrary/bass/build/generated/assets/shaders/debug"/></dataSet><dataSet config="debug"><source path="/home/trs/PLDroidPlayer/AudioLibrary/bass/src/debug/assets"/></dataSet></merger>
