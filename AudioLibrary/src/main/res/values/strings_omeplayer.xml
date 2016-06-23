@@ -1,0 +1,82 @@
+<resources>
+
+    <!-- utf8 -->
+    <!-- Library ERROR -->
+
+
+    <!-- 未知异常，即-1 -->
+    <string name="error_01">Unknown Error</string>
+    <!-- 正常 -->
+    <string name="error_0">OK</string>
+    <!-- 内存出错 -->
+    <string name="error_1">Memory Error</string>
+    <string name="error_2">Can\'t open the file</string>
+    <!-- 设备异常（找不到） -->
+    <string name="error_3">Can\'t find a free/vaild driver</string>
+    <!-- 样本缓存丢失 -->
+    <string name="error_4">Sample Buffer was lost</string>
+    <!-- 即无效的音频编号(一个Handle对应一个音频通道或样本) -->
+    <string name="error_5">Invalid Handle</string>
+    <!-- 不支持该采样的格式 -->
+    <string name="error_6">Unsupported Sample Format</string>
+    <!-- 无效的位置 -->
+    <string name="error_7">Invalid Position</string>
+    <!-- BASS_Init初始化失败 -->
+    <string name="error_8">AudioLibrary Init Failure</string>
+    <!-- BASS_Start由BASS_Init调用，除非调用pause或stop所有音频 -->
+    <string name="error_9">AudioLibrary Start Failure</string>
+    <!-- 操作准备就绪 -->
+    <string name="error_14">already Operation</string>
+    <!-- 一般是SampleGetChannel会引发，即样本无法获得对应的Channel -->
+    <string name="error_18">Sample can\'t get a free Channel</string>
+    <!-- 指定了无效的属性 -->
+    <string name="error_19">Illegal type was specified</string>
+    <!-- 指定了无效的参数 -->
+    <string name="error_20">Illegal parameter was specified</string>
+    <!-- 没有3D音频的设备、不支持3D音效 -->
+    <string name="error_21">Unsupport 3D</string>
+    <!-- 不支持EAX(环境音效扩展) -->
+    <string name="error_22">Unsupport EAX</string>
+    <!-- 一般是操作跟设备相关的函数引发的 -->
+    <string name="error_23">Invalid Device</string>
+    <!-- 一些需要对播放中的音频进行操作而引发（如暂停、获取音频的某些信息） -->
+    <string name="error_24">No Playing</string>
+    <!-- 非法的采样率，API中没说明是如何引起的 -->
+    <string name="error_25">Illegal Sample Rate</string>
+    <!-- 由设定位置引起的 -->
+    <string name="error_27">The Stream is Not a File Stream</string>
+    <!-- 在ChannelPlay中引起的 -->
+    <string name="error_29">No Hardware Voices Available</string>
+    <!-- 专用于MOD音乐的 -->
+    <string name="error_31">The MOD music has no sequence data</string>
+    <!-- 网络异常 -->
+    <string name="error_32">Internet Error</string>
+    <!-- 不能创建文件，都是用于解码时创建PCM文件 -->
+    <string name="error_33">Couldn\'t create the file</string>
+    <!-- 指定的音效无法使用 -->
+    <string name="error_34">Effects are not available</string>
+    <!-- 指需要返回的数据异常 -->
+    <string name="error_37">Requested data is not available</string>
+    <!-- 该音频通道是一个解码通道，不能作其他用途（如play） -->
+    <string name="error_38">The channel is a Decoding Channel</string>
+    <!-- 在Android的版本中为不支持OpenSLES（2.3版本以下） -->
+    <string name="error_39">Unsupport OpenSLES</string>
+    <!-- 网络连接超时 -->
+    <string name="error_40">Connection TimeOut</string>
+    <!-- 不支持该文件的格式 -->
+    <string name="error_41">Unsupported File Format</string>
+    <!-- 一般是指定的扬声器无效 -->
+    <string name="error_42">Unavailable Speaker</string>
+    <!-- 在使用插件时不支持该版本 -->
+    <string name="error_43">Invalid Version</string>
+    <!-- 不支持文件对应的编解码器 -->
+    <string name="error_44">Codec is not available/supported</string>
+    <!-- 指对应的Channel或文件已经结束 -->
+    <string name="error_45">The channel/file has ended</string>
+    <!-- 设备正忙，一般不会出现 -->
+    <string name="error_46">Device Busy</string>
+    <!-- 引用的类的问题 -->
+    <string name="error_2000">Object Class Problem</string>
+
+    <string name="version">0.1.0</string>
+</resources>
