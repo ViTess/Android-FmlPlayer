@@ -18,5 +18,6 @@ android {
 }
 
 dependencies {
+    compile 'com.android.support:support-annotations:+'
     compile fileTree(include: ['*.jar'], dir: 'libs')
 }

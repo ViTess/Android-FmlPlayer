@@ -1,41 +1,62 @@
 package com.example.testaudio;
 
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
-import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
+import android.text.TextUtils;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.view.ViewGroup;
-import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.Toast;
 import android.widget.CompoundButton.OnCheckedChangeListener;
-import android.widget.ListView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
-import com.omesoft.audiolibrary.OMEPlayer;
+import com.vite.audiolibrary.FmlPlayer;
+import com.vite.audiolibrary.PlayerListener;
+
+import java.io.IOException;
+import java.lang.ref.WeakReference;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class MainActivity extends Activity implements OnClickListener, OnCheckedChangeListener,
         OnSeekBarChangeListener, android.widget.RadioGroup.OnCheckedChangeListener {
-    Context context;
-    OMEPlayer omePlayer;
+    private final int HANDLER_MSG_UPDATE_PROGRESS = 0x01;
 
-    Button play, pause, stop;
-    TextView name, volume, panning, rotate, eq100, eq600, eq1k, eq8k, eq14k;
-    SeekBar volume_sb, panning_sb, rotate_sb, eq100_sb, eq600_sb, eq1k_sb, eq8k_sb, eq14k_sb;
+    private final String ASSETS_FILE = "example.mp3";
+
+    Context context;
+    FmlPlayer fmlPlayer;
+    FmlPlayer.FxController fxController;
+
+    EditText url;
+    Button playLocal, playAsset, playOnline, openFile, pause, stop, restart;
+    TextView name, localFilePath, volume, panning, rotate, eq100, eq600, eq1k, eq8k, eq14k, tv_progress;
+    SeekBar volume_sb, panning_sb, rotate_sb, eq100_sb, eq600_sb, eq1k_sb, eq8k_sb, eq14k_sb, sb_progress;
     CheckBox rotate_cb, eq_cb, autowah_cb, phaser_cb, chorus_cb, echo_cb;
     RadioGroup autowah_rg, phaser_rg, chorus_rg, echo_rg;
     RadioButton autowah_slow, phaser_shift, chorus_flanger, echo_small;
-    ;
+    ProgressDialog loadingDialog;
+
+    PlayerListener.OnCompletionListener mCompletionListener;
+    PlayerListener.OnPreparedListener mPreparedListener;
+    PlayerListener.OnErrorListener mErrorListener;
+
+    Timer timer;
+    TimerTask timerTask;
+    MainHandler mMianHandler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,36 +66,84 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
         init();
         initView();
         loadView();
-        initHandle();
     }
 
     private void init() {
-        OMEPlayer.initAudioEngine(getApplicationContext());
-        OMEPlayer.overallSetVolume(1);
-//		String filePath = Environment.getExternalStorageDirectory().getPath() + "/" + "喜欢你.mp3";
-//		omePlayer = new OMEPlayer();
-//		omePlayer.setDataSource(filePath);
-//		 omePlayer = OMEPlayer.Create("sound4.ogg");
-        omePlayer = new OMEPlayer();
-        new Thread() {
+        mMianHandler = new MainHandler(this);
+
+        FmlPlayer.init(this, true);
+        FmlPlayer.setGlobalVolume(1f);
+        fxController = new FmlPlayer.FxController();
+
+        mCompletionListener = new PlayerListener.OnCompletionListener() {
             @Override
-            public void run() {
-                omePlayer.setDataSource("http://7xrnmp.com1.z0.glb.clouddn" +
-                        ".com/%E7%A3%AF%E6%9D%91%E7%94%B1%E7%BA%AA%E5%AD%90%20-%20%E9%A3%8E%E3%81%AE%E4%BD%8F%E3%82%80%E8%A1%97.mp3");
+            public void onCompletion(FmlPlayer fp) {
+                dismissLoadingDialog();
+
+                Toast.makeText(context, "onCompletion", Toast.LENGTH_LONG).show();
+
+                if (fmlPlayer != null) {
+                    fmlPlayer.stop();
+                    fmlPlayer.release();
+                    fmlPlayer = null;
+                }
+
+                stopTimerTask();
             }
-        }.start();
-        omePlayer.setLooping(true);
-        omePlayer.openFX();
+        };
+
+        mPreparedListener = new PlayerListener.OnPreparedListener() {
+            @Override
+            public void OnPrepared(FmlPlayer fp) {
+                dismissLoadingDialog();
+
+                Toast.makeText(context, "OnPrepared", Toast.LENGTH_LONG).show();
+
+                if (fmlPlayer != null) {
+                    name.setText(fmlPlayer.getAudioName());
+                    fmlPlayer.play();
+                    sb_progress.setMax((int) Math.round(fmlPlayer.getTotalTime()));
+                    startTimerTask();
+                }
+
+            }
+        };
+
+        mErrorListener = new PlayerListener.OnErrorListener() {
+            @Override
+            public void onError(FmlPlayer fp, int errorCode) {
+
+                dismissLoadingDialog();
+
+                String errorStr = String.valueOf(errorCode);
+                if (errorCode == -1)
+                    errorStr = "01";
+                int resId = context.getResources().getIdentifier("error_" + errorStr, "string",
+                        context.getPackageName());
+                String print = resId > 0 ? context.getString(resId) : context.getString(com.vite.audiolibrary.R.string.error_01);
+                Toast.makeText(context, "onError , " + print, Toast.LENGTH_LONG).show();
+
+                stopTimerTask();
+            }
+        };
     }
 
     private void initView() {
-        play = (Button) findViewById(R.id.play);
+        url = (EditText) findViewById(R.id.url);
+        playLocal = (Button) findViewById(R.id.play);
+        playAsset = (Button) findViewById(R.id.playasset);
+        playOnline = (Button) findViewById(R.id.playonline);
+        openFile = (Button) findViewById(R.id.openfile);
         pause = (Button) findViewById(R.id.pause);
         stop = (Button) findViewById(R.id.stop);
+        restart = (Button) findViewById(R.id.restart);
         name = (TextView) findViewById(R.id.name);
+        localFilePath = (TextView) findViewById(R.id.filepath);
         volume = (TextView) findViewById(R.id.volume_text);
         panning = (TextView) findViewById(R.id.panning_text);
         rotate = (TextView) findViewById(R.id.rotate_text);
+        tv_progress = (TextView) findViewById(R.id.progress_text);
+        sb_progress = (SeekBar) findViewById(R.id.progress_seekbar);
         volume_sb = (SeekBar) findViewById(R.id.volume_seekbar);
         panning_sb = (SeekBar) findViewById(R.id.panning_seekbar);
         rotate_sb = (SeekBar) findViewById(R.id.rotate_seekbar);
@@ -110,14 +179,19 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
     }
 
     private void loadView() {
-        play.setOnClickListener(this);
+        playLocal.setOnClickListener(this);
+        playAsset.setOnClickListener(this);
+        playOnline.setOnClickListener(this);
+        openFile.setOnClickListener(this);
         pause.setOnClickListener(this);
         stop.setOnClickListener(this);
+        restart.setOnClickListener(this);
+        sb_progress.setOnSeekBarChangeListener(this);
         volume_sb.setOnSeekBarChangeListener(this);
         panning_sb.setOnSeekBarChangeListener(this);
         rotate_sb.setOnSeekBarChangeListener(this);
         rotate_cb.setOnCheckedChangeListener(this);
-        name.setText(omePlayer.getAudioName());
+        volume_sb.setProgress(100);
         panning_sb.setProgress(50);
         //
         eq100_sb.setOnSeekBarChangeListener(this);
@@ -143,25 +217,238 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
         //
         echo_cb.setOnCheckedChangeListener(this);
         echo_rg.setOnCheckedChangeListener(this);
-    }
 
-    private void initHandle() {
-
+        url.setText("http://wl.baidu190.com/1449198945/d52fd8cd9e5bc41d8adc3a55db9b231d.mp3");
     }
 
     @Override
     public void onClick(View v) {
         // TODO Auto-generated method stub
+        stopTimerTask();
         switch (v.getId()) {
-            case R.id.play:
-                omePlayer.Play();
+            case R.id.play://play local music file
+                playLocalFile();
+                break;
+            case R.id.playasset:
+                playAssetFile();
+                break;
+            case R.id.playonline:
+                playOnlineUrl();
+                break;
+            case R.id.openfile:
+                openFile();
                 break;
             case R.id.pause:
-                omePlayer.Pause();
+                stopTimerTask();
+                if (fmlPlayer != null)
+                    fmlPlayer.pause();
                 break;
             case R.id.stop:
-                omePlayer.Stop();
+                stopTimerTask();
+                if (fmlPlayer != null)
+                    fmlPlayer.stop();
                 break;
+            case R.id.restart:
+                startTimerTask();
+                if (fmlPlayer != null && fmlPlayer.isPausing())
+                    fmlPlayer.play();
+                break;
+        }
+    }
+
+    private void playLocalFile() {
+        final String path = localFilePath.getText().toString().trim();
+        if (TextUtils.isEmpty(path)) {
+            Toast.makeText(MainActivity.this, "please select music file", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        closeFX();
+        new Thread() {
+            @Override
+            public void run() {
+                if (fmlPlayer != null) {
+                    fmlPlayer.stop();
+                    fmlPlayer.release();
+                    fmlPlayer = null;
+                }
+
+                try {
+                    fmlPlayer = new FmlPlayer();
+                    fmlPlayer.setExternalFile(localFilePath.getText().toString().trim());
+                    fmlPlayer.setLooping(false);
+
+                    fmlPlayer.setOnCompletionListener(mCompletionListener);
+                    fmlPlayer.setOnPreparedListener(mPreparedListener);
+                    fmlPlayer.setOnErrorListener(mErrorListener);
+
+                    fmlPlayer.prepare();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    mErrorListener.onError(fmlPlayer, -1);
+                }
+            }
+        }.start();
+    }
+
+    private void playAssetFile() {
+        closeFX();
+        new Thread() {
+            @Override
+            public void run() {
+                if (fmlPlayer != null) {
+                    fmlPlayer.stop();
+                    fmlPlayer.release();
+                    fmlPlayer = null;
+                }
+
+                fmlPlayer = new FmlPlayer();
+                fmlPlayer.setAssetFile(ASSETS_FILE);
+                fmlPlayer.setLooping(false);
+
+                fmlPlayer.setOnCompletionListener(mCompletionListener);
+                fmlPlayer.setOnPreparedListener(mPreparedListener);
+                fmlPlayer.setOnErrorListener(mErrorListener);
+
+                fmlPlayer.prepare();
+            }
+        }.start();
+    }
+
+    private void playOnlineUrl() {
+        final String path = url.getText().toString().trim();
+        if (TextUtils.isEmpty(path)) {
+            Toast.makeText(MainActivity.this, "please enter music url", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        closeFX();
+        showLoadingDialog();
+        new Thread() {
+            @Override
+            public void run() {
+                if (fmlPlayer != null) {
+                    fmlPlayer.stop();
+                    fmlPlayer.release();
+                    fmlPlayer = null;
+                }
+
+                try {
+                    fmlPlayer = new FmlPlayer();
+                    fmlPlayer.setNetFile(path);
+                    fmlPlayer.setLooping(false);
+
+                    fmlPlayer.setOnCompletionListener(mCompletionListener);
+                    fmlPlayer.setOnPreparedListener(mPreparedListener);
+                    fmlPlayer.setOnErrorListener(mErrorListener);
+
+                    fmlPlayer.prepareSync();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }.start();
+    }
+
+    private void openFile() {
+        Intent intent = new Intent(this, FileActivity.class);
+        intent.putExtra("musicpath", localFilePath.getText().toString().trim());
+        startActivityForResult(intent, 100);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 100) {
+            if (resultCode == RESULT_OK) {
+                localFilePath.setText(data.getStringExtra("path"));
+            } else if (resultCode == RESULT_CANCELED) {
+
+            }
+        }
+    }
+
+    private void showLoadingDialog() {
+        dismissLoadingDialog();
+        loadingDialog = ProgressDialog.show(this, null, "waiting", false, false);
+    }
+
+    private void dismissLoadingDialog() {
+        if (loadingDialog != null)
+            loadingDialog.dismiss();
+    }
+
+    private void startTimerTask() {
+        if (timer != null && timerTask != null) {
+            timerTask.cancel();
+        }
+
+        if (timer == null)
+            timer = new Timer();
+
+        timerTask = new TimerTask() {
+            @Override
+            public void run() {
+                if (fmlPlayer != null) {
+                    if (fmlPlayer.isStoping()) {
+                        timerTask.cancel();
+                        return;
+                    }
+
+                    double cTime = fmlPlayer.getCurrentPosition();
+                    double aTime = fmlPlayer.getTotalTime();
+                    StringBuilder sb = new StringBuilder();
+                    int cMin = (int) cTime / 60;//don't use Math.round()
+                    int cSec = (int) cTime % 60;
+                    int aMin = (int) aTime / 60;
+                    int aSec = (int) aTime % 60;
+                    sb.append(cMin).append(":").append(cSec < 10 ? "0" + cSec : cSec).append("/");
+                    sb.append(aMin).append(":").append(aSec);
+
+                    int buf = (int) (fmlPlayer.getBufferPercentage() / 100 * aTime);
+                    fmlPlayer.getMetaData();
+                    mMianHandler.obtainMessage(HANDLER_MSG_UPDATE_PROGRESS, (int) cTime, buf, sb.toString()).sendToTarget();
+                }
+            }
+        };
+
+        timer.schedule(timerTask, 0, 1000);
+    }
+
+    private void stopTimerTask() {
+        if (timer != null && timerTask != null) {
+            timerTask.cancel();
+        }
+    }
+
+    private void closeFX() {
+        rotate_cb.setChecked(false);
+        rotate_sb.setProgress(0);
+
+        eq_cb.setChecked(false);
+        eq100_sb.setProgress(0);
+        eq600_sb.setProgress(0);
+        eq1k_sb.setProgress(0);
+        eq8k_sb.setProgress(0);
+        eq14k_sb.setProgress(0);
+
+        autowah_cb.setChecked(false);
+        autowah_rg.clearCheck();
+        autowah_rg.setEnabled(false);
+
+        phaser_cb.setChecked(false);
+        phaser_rg.clearCheck();
+        phaser_rg.setEnabled(false);
+
+        chorus_cb.setChecked(false);
+        chorus_rg.clearCheck();
+        chorus_rg.setEnabled(false);
+
+        echo_cb.setChecked(false);
+        echo_rg.clearCheck();
+        echo_rg.setEnabled(false);
+
+        if (fxController != null) {
+            fxController.release();
+            fxController = new FmlPlayer.FxController();
         }
     }
 
@@ -170,57 +457,60 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
         // TODO Auto-generated method stub
         switch (buttonView.getId()) {
             case R.id.rotate_checkbox:
-                if (isChecked) {
-                    omePlayer.openRotate();
-                    rotate.setText(String.valueOf(omePlayer.getRotate()));
-                } else
-                    omePlayer.closeRotate();
+                if (!isChecked)
+                    fxController.resetRotate();
                 break;
             case R.id.eq_checkbox:
-                if (isChecked)
-                    omePlayer.openEQ();
-                else
-                    omePlayer.closeEQ();
+                if (!isChecked)
+                    fxController.resetPeakEQ();
+
+                //fxController.resetPeakEQ_100();
+                //fxController.resetPeakEQ_600();
+                //fxController.resetPeakEQ_1k();
+                //fxController.resetPeakEQ_8k();
+                //fxController.resetPeakEQ_14k();
                 break;
             case R.id.autowah_checkbox:
                 if (isChecked) {
-                    omePlayer.openAUTOWAH();
                     autowah_rg.setEnabled(true);
                     autowah_slow.setChecked(true);
                 } else {
-                    omePlayer.closeAUTOWAH();
+                    fxController.resetAutoWah();
+
                     autowah_rg.clearCheck();
                     autowah_rg.setEnabled(false);
                 }
                 break;
             case R.id.phaser_checkbox:
                 if (isChecked) {
-                    omePlayer.openPhaser();
                     phaser_rg.setEnabled(true);
                     phaser_shift.setChecked(true);
                 } else {
-                    omePlayer.closePhaser();
+                    fxController.resetPhaser();
+
                     phaser_rg.setEnabled(false);
                     phaser_rg.clearCheck();
                 }
                 break;
             case R.id.chorus_checkbox:
                 if (isChecked) {
-                    omePlayer.openChorus();
                     chorus_rg.setEnabled(true);
                     chorus_flanger.setChecked(true);
                 } else {
-                    omePlayer.closeChorus();
+                    fxController.resetChorus();
+
                     chorus_rg.setEnabled(false);
                     chorus_rg.clearCheck();
                 }
                 break;
             case R.id.echo_checkbox:
                 if (isChecked) {
-                    omePlayer.openEcho();
+                    echo_rg.setEnabled(true);
                     echo_small.setChecked(true);
                 } else {
-                    omePlayer.closeEcho();
+                    fxController.resetEcho();
+
+                    echo_rg.setEnabled(false);
                     echo_rg.clearCheck();
                 }
                 break;
@@ -230,159 +520,180 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
     @Override
     public void onCheckedChanged(RadioGroup group, int checkedId) {
         // TODO Auto-generated method stub
-        float[] option;
-        String options;
         switch (group.getId()) {
             case R.id.autowah_radiogroup:
+                if (!autowah_cb.isChecked()) {
+                    return;
+                }
                 switch (checkedId) {
                     case R.id.autowah_rb_slow:
-                        omePlayer.setAUTOWAH(OMEPlayer.AUTOWAH_SLOW);
+                        fxController.setAutoWah(FmlPlayer.FxController.AUTOWAH_SLOW);
                         break;
                     case R.id.autowah_rb_fast:
-                        omePlayer.setAUTOWAH(OMEPlayer.AUTOWAH_FAST);
+                        fxController.setAutoWah(FmlPlayer.FxController.AUTOWAH_FAST);
                         break;
                     case R.id.autowah_rb_hifast:
-                        omePlayer.setAUTOWAH(OMEPlayer.AUTOWAH_HIFAST);
+                        fxController.setAutoWah(FmlPlayer.FxController.AUTOWAH_HIFAST);
                         break;
-                }
-                option = omePlayer.getAUTOWAH();
-                if (option != null) {
-                    options = option[0] + "," + option[1] + "," + option[2] + "," + option[3] + "," + option[4]
-                            + "," + option[5];
-                    Toast.makeText(context, options, Toast.LENGTH_SHORT).show();
                 }
                 break;
             case R.id.phaser_radiogroup:
+                if (!phaser_cb.isChecked()) {
+                    return;
+                }
                 switch (checkedId) {
                     case R.id.phaser_rb_shift:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_SHIFT);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_SHIFT);
                         break;
                     case R.id.phaser_rb_slowshift:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_SLOWSHIFT);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_SLOWSHIFT);
                         break;
                     case R.id.phaser_rb_basic:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_BASIC);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_BASIC);
                         break;
                     case R.id.phaser_rb_med:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_MED);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_MED);
                         break;
                     case R.id.phaser_rb_fast:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_FAST);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_FAST);
                         break;
                     case R.id.phaser_rb_wfb:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_WFB);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_WFB);
                         break;
                     case R.id.phaser_rb_invert:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_INVERT);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_INVERT);
                         break;
                     case R.id.phaser_rb_tremolo:
-                        omePlayer.setPhaser(OMEPlayer.PHASER_TREMOLO);
+                        fxController.setPhaser(FmlPlayer.FxController.PHASER_TREMOLO);
                         break;
-                }
-                option = omePlayer.getPhaser();
-                if (option != null) {
-                    options = option[0] + "," + option[1] + "," + option[2] + "," + option[3] + "," + option[4]
-                            + "," + option[5];
-                    Toast.makeText(context, options, Toast.LENGTH_SHORT).show();
                 }
                 break;
             case R.id.chorus_radiogroup:
+                if (!chorus_cb.isChecked()) {
+                    return;
+                }
                 switch (checkedId) {
                     case R.id.chorus_rb_flanger:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_FLANGER);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_FLANGER);
                         break;
                     case R.id.chorus_rb_exaggeration:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_EXAGGERATION);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_EXAGGERATION);
                         break;
                     case R.id.chorus_rb_motocycle:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_MOTOCYCLE);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_MOTOCYCLE);
                         break;
                     case R.id.chorus_rb_devil:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_DEVIL);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_DEVIL);
                         break;
                     case R.id.chorus_rb_manyvoice:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_MANYVOICE);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_MANYVOICE);
                         break;
                     case R.id.chorus_rb_chipmunk:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_CHIPMUNK);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_CHIPMUNK);
                         break;
                     case R.id.chorus_rb_water:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_WATER);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_WATER);
                         break;
                     case R.id.chorus_rb_airplane:
-                        omePlayer.setChorus(OMEPlayer.CHORUS_AIRPLANE);
+                        fxController.setChorus(FmlPlayer.FxController.CHORUS_AIRPLANE);
                         break;
-                }
-                option = omePlayer.getChorus();
-                if (option != null) {
-                    options = option[0] + "," + option[1] + "," + option[2] + "," + option[3] + "," + option[4]
-                            + "," + option[5];
-                    Toast.makeText(context, options, Toast.LENGTH_SHORT).show();
                 }
                 break;
             case R.id.echo_radiogroup:
+                if (!echo_cb.isChecked()) {
+                    return;
+                }
                 switch (checkedId) {
                     case R.id.echo_rb_small:
-                        omePlayer.setEcho(OMEPlayer.ECHO_SMALL);
+                        fxController.setEcho(FmlPlayer.FxController.ECHO_SMALL);
                         break;
                     case R.id.echo_rb_many:
-                        omePlayer.setEcho(OMEPlayer.ECHO_MANY);
+                        fxController.setEcho(FmlPlayer.FxController.ECHO_MANY);
                         break;
                     case R.id.echo_rb_reverse:
-                        omePlayer.setEcho(OMEPlayer.ECHO_REVERSE);
+                        fxController.setEcho(FmlPlayer.FxController.ECHO_REVERSE);
                         break;
                     case R.id.echo_rb_robotic:
-                        omePlayer.setEcho(OMEPlayer.ECHO_ROBOTIC);
+                        fxController.setEcho(FmlPlayer.FxController.ECHO_ROBOTIC);
                         break;
-                }
-                option = omePlayer.getEcho();
-                if (option != null) {
-                    options = option[0] + "," + option[1] + "," + option[2] + "," + option[3];
-                    Toast.makeText(context, options, Toast.LENGTH_SHORT).show();
                 }
                 break;
         }
+        if (fmlPlayer != null)
+            fxController.update(fmlPlayer);
     }
 
     @Override
     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
         // TODO Auto-generated method stub
+        if (seekBar.getId() == R.id.progress_seekbar) {
+            if (fromUser) {
+                fmlPlayer.seekTo(progress);
+            }
+        } else {
+            if (!fromUser)
+                return;
+        }
+
+        boolean isChange = false;
         switch (seekBar.getId()) {
             case R.id.volume_seekbar:
-                omePlayer.setVolume(progress / 100f);
-                volume.setText(String.valueOf(omePlayer.getVolume()));
+                fmlPlayer.setVolume(progress / 100f);
+                volume.setText(String.valueOf(fmlPlayer.getVolume()));
                 break;
             case R.id.panning_seekbar:
                 float pan = progress * 0.02f - 1f;
-                omePlayer.setPanning(pan);
-                panning.setText(String.valueOf(omePlayer.getPanning()));
+                fmlPlayer.setPanning(pan);
+                panning.setText(String.valueOf(fmlPlayer.getPanning()));
                 break;
             case R.id.rotate_seekbar:
                 if (rotate_cb.isChecked()) {
-                    omePlayer.setRotate(progress * 0.01f);
-                    rotate.setText(String.valueOf(omePlayer.getRotate()));
+                    fxController.setRotate(progress * 0.01f);
+                    isChange = true;
                 }
                 break;
             case R.id.eq100_seekbar:
-                omePlayer.setEQ100(progress * 0.3f - 15f);
-                eq100.setText(String.valueOf(omePlayer.getEQ100()));
+                if (eq_cb.isChecked()) {
+                    fxController.setPeakEQ_100(progress * 0.3f - 15f);
+                    isChange = true;
+                }
                 break;
             case R.id.eq600_seekbar:
-                omePlayer.setEQ600(progress * 0.3f - 15f);
-                eq600.setText(String.valueOf(omePlayer.getEQ600()));
+                if (eq_cb.isChecked()) {
+                    fxController.setPeakEQ_600(progress * 0.3f - 15f);
+                    isChange = true;
+                }
                 break;
             case R.id.eq1k_seekbar:
-                omePlayer.setEQ1k(progress * 0.3f - 15f);
-                eq1k.setText(String.valueOf(omePlayer.getEQ1k()));
+                if (eq_cb.isChecked()) {
+                    fxController.setPeakEQ_1k(progress * 0.3f - 15f);
+                    isChange = true;
+                }
                 break;
             case R.id.eq8k_seekbar:
-                omePlayer.setEQ8k(progress * 0.3f - 15f);
-                eq8k.setText(String.valueOf(omePlayer.getEQ8k()));
+                if (eq_cb.isChecked()) {
+                    fxController.setPeakEQ_8k(progress * 0.3f - 15f);
+                    isChange = true;
+                }
                 break;
             case R.id.eq14k_seekbar:
-                omePlayer.setEQ14k(progress * 0.3f - 15f);
-                eq14k.setText(String.valueOf(omePlayer.getEQ14k()));
+                if (eq_cb.isChecked()) {
+                    fxController.setPeakEQ_14k(progress * 0.3f - 15f);
+                    isChange = true;
+                }
                 break;
+        }
+
+        if (isChange) {
+            if (fmlPlayer != null) {
+                fxController.update(fmlPlayer);
+                rotate.setText(String.valueOf(fxController.getRotate()));
+                eq100.setText(String.valueOf(fxController.getGain4PeakEQ_100()));
+                eq600.setText(String.valueOf(fxController.getGain4PeakEQ_600()));
+                eq1k.setText(String.valueOf(fxController.getGain4PeakEQ_1k()));
+                eq8k.setText(String.valueOf(fxController.getGain4PeakEQ_8k()));
+                eq14k.setText(String.valueOf(fxController.getGain4PeakEQ_14k()));
+            }
         }
     }
 
@@ -401,9 +712,38 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
     @Override
     protected void onDestroy() {
         // TODO Auto-generated method stub
-        omePlayer.closeFX();
-        omePlayer.release();
-        OMEPlayer.releaseAudioEngine();
+        stopTimerTask();
+        fxController.release();
+        if (fmlPlayer != null) {
+            fmlPlayer.release();
+        }
+        FmlPlayer.free();
         super.onDestroy();
+    }
+
+    private class MainHandler extends Handler {
+        private final WeakReference<Context> mRef;
+
+        public MainHandler(Context context) {
+            mRef = new WeakReference<Context>(context.getApplicationContext());
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            if (mRef == null)
+                return;
+
+            Context context = mRef.get();
+            if (context == null)
+                return;
+
+            switch (msg.what) {
+                case HANDLER_MSG_UPDATE_PROGRESS:
+                    tv_progress.setText(msg.obj.toString());
+                    sb_progress.setProgress(msg.arg1);
+                    sb_progress.setSecondaryProgress(msg.arg2);
+                    break;
+            }
+        }
     }
 }

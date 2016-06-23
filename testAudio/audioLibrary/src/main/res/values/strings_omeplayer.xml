@@ -78,4 +78,5 @@
     <!-- 引用的类的问题 -->
     <string name="error_2000">Object Class Problem</string>
 
+    <string name="version">0.1.0</string>
 </resources>
