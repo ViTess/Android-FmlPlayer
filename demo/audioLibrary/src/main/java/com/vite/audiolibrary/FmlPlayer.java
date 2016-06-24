@@ -4,6 +4,9 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -248,7 +251,21 @@ public class FmlPlayer {
      *               <br> <li><b>BASS_CONFIG_OGG_PRESCAN</b> <br>
      *               预扫描OGG文件，默认开启 <br>
      *               <br> <li><b>BASS_CONFIG_DEV_NONSTOP</b> <br>
-     *               不知道，Android新增的，API完全没提
+     *               不知道，Android新增的，API完全没提 <br>
+     *               <br> <li><b>BASS_CONFIG_NET_PREBUF</b> <br>
+     *               与BASS_CONFIG_NET_BUFFER有关，取值为0~100，表示百分比，默认值为75，表示当缓冲至BASS_CONFIG_NET_BUFFER × 75%时，就开始播放 <br>
+     *               <br> <li><b>BASS_CONFIG_NET_SEEK</b> <br>
+     *               并没有什么卵用(可能跟流媒体有关) <br>
+     *               <br> <li><b>BASS_CONFIG_NET_TIMEOUT</b> <br>
+     *               设置网络加载的超时时间，默认5000ms <br>
+     *               <br> <li><b>BASS_CONFIG_NET_PASSIVE</b> <br>
+     *               Use passive mode in FTP connections , 0 - false , 1 - true ?<br>
+     *               <br> <li><b>BASS_CONFIG_NET_BUFFER</b> <br>
+     *               设置网络加载缓冲区大小，默认5000，单位ms?增加缓冲区大小可以减小缓冲时因为网络卡顿导致播放卡顿的机会，
+     *               但是另一方面也增加了预缓冲的时间。另外，网络缓冲区大小应该比播放缓冲区（BASS_CONFIG_BUFFER）要大，
+     *               否则也会造成播放卡顿的情况。注意：该设置只对后来生成的播放流有效，对之前的播放流没有影响<br>
+     *               <br> <li><b>BASS_CONFIG_NET_READTIMEOUT</b> <br>
+     *               设置读取网络数据的时间，当时间一到，将自动停止缓冲数据<br>
      * @param value
      * @return
      */
@@ -271,7 +288,51 @@ public class FmlPlayer {
         return value;
     }
 
-    public static String getFileName(String text) {
+    /**
+     * 设置加载网络音频超时时间，默认5000ms
+     *
+     * @param mesc unit(ms)
+     * @return
+     */
+    public static boolean setNetTimeOut(int mesc) {
+        return setGlobalOption(BASS.BASS_CONFIG_NET_TIMEOUT, mesc);
+    }
+
+    /**
+     * 设置网络加载缓冲区大小，默认5000，单位ms?增加缓冲区大小可以减小缓冲时因为网络卡顿导致播放卡顿的机会，
+     * 但是另一方面也增加了预缓冲的时间。另外，网络缓冲区大小应该比播放缓冲区（BASS_CONFIG_BUFFER）要大，
+     * 否则也会造成播放卡顿的情况。注意：该设置只对后来生成的播放流有效，对之前的播放流没有影响
+     *
+     * @param mesc
+     * @return
+     */
+    public static boolean setNetBuffer(int mesc) {
+        return setGlobalOption(BASS.BASS_CONFIG_NET_BUFFER, mesc);
+    }
+
+    /**
+     * 与net buffer有关，取值为0~100，表示百分比，默认值为75，表示当缓冲至BASS_CONFIG_NET_BUFFER × 75%时，就开始播放。
+     * 如果想要实时获取到缓冲进度，讲其设置为0最好
+     *
+     * @param percentage
+     * @return
+     */
+    public static boolean setNetPreBufPercentage(@IntRange(from = 0, to = 100) int percentage) {
+        return setGlobalOption(BASS.BASS_CONFIG_NET_PREBUF, percentage);
+    }
+
+    /**
+     * 设置读取网络数据的时间，当时间一到，将自动停止缓冲数据<br>
+     * 默认为0, 0即不开启该功能
+     *
+     * @param mesc
+     * @return
+     */
+    public static boolean setNetReadBufTime(int mesc) {
+        return setGlobalOption(BASS.BASS_CONFIG_NET_READTIMEOUT, mesc);
+    }
+
+    private static String getFileName(String text) {
         String fileName = null;
         String suffixes = "ogg|mp1|mp2|mp3|wav";
         Pattern mPat = Pattern.compile("[\\w]+[\\.](" + suffixes + ")");
@@ -314,7 +375,7 @@ public class FmlPlayer {
         if (mDeviceInfo != null) {
             StringBuilder sb = new StringBuilder();
             String version = context.getString(R.string.version);
-            sb.append("FmlPlayer Version ").append(version).append(", base on BASS Library").append("\n\n");
+            sb.append("FmlPlayer Version ").append(version).append(", base on BASS Library ").append(BASS.BASSVERSIONTEXT).append("\n\n");
             sb.append("Device Info :").append("\n");
             sb.append("Device Capabilities Flags - ").append(mDeviceInfo.flags).append("\n");
             sb.append("Total Hardware Memory - ").append(mDeviceInfo.hwsize).append("\n");
@@ -992,7 +1053,38 @@ public class FmlPlayer {
         return null;
     }
 
-    public void getMetaData() {
+    /**
+     * 该方法有bug。
+     * 首先，如果播放的文件是mp3，就要使用id3v2来获取meta数据。
+     * 但是返回是乱码。
+     * 解决方法是使用tag库来解析。
+     * 另外，当播放不同的音频时，要根据音频类型设置不同的tag标志来获取数据
+     * <p/>
+     * It has bug,
+     * if play mp3 , the meta data is id3v2,
+     * but the data is messy code
+     *
+     * @return
+     */
+    @Deprecated
+    public String getMetaData() {
+        String data = null;
+        Object obj = BASS.BASS_ChannelGetTags(mHandle, BASS.BASS_TAG_ID3V2);
+        printError("getMetaData");
+        if (obj != null) {
+            ByteBuffer bb = (ByteBuffer) obj;
+            CharBuffer charBuffer = null;
+            try {
+                Charset charset = Charset.forName("ISO-8859-1");//ISO-8859-1
+                CharsetDecoder decoder = charset.newDecoder();
+                charBuffer = decoder.decode(bb);
+                data = charBuffer.toString();
+//                Log.v("getMetaData iso",charBuffer.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return data;
     }
 
     /**
@@ -2108,9 +2200,6 @@ public class FmlPlayer {
 
     // BASS_GetDeviceInfo
     // 获取设备的相关信息
-
-    // BASS_GetInfo
-    // 获取设备的具体信息，之后应该用得上
 
     // BASS_SetConfigPtr
     // 这貌似是与在线播放有关的、连接服务器配置的

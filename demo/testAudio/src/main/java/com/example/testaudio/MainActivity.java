@@ -23,6 +23,7 @@ import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
+import com.un4seen.bass.BASS;
 import com.vite.audiolibrary.FmlPlayer;
 import com.vite.audiolibrary.PlayerListener;
 
@@ -73,6 +74,19 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
 
         FmlPlayer.init(this, true);
         FmlPlayer.setGlobalVolume(1f);
+
+        FmlPlayer.setNetTimeOut(6000);
+        FmlPlayer.setNetBuffer(8000);
+        FmlPlayer.setNetPreBufPercentage(0);
+
+//        Log.v("MainActivity","BASS_CONFIG_NET_BUFFER::"+FmlPlayer.getGlobalOptions(BASS.BASS_CONFIG_NET_BUFFER));
+//        Log.v("MainActivity","BASS_CONFIG_NET_PASSIVE::"+FmlPlayer.getGlobalOptions(BASS.BASS_CONFIG_NET_PASSIVE));
+//        Log.v("MainActivity","BASS_CONFIG_NET_PREBUF::"+FmlPlayer.getGlobalOptions(BASS.BASS_CONFIG_NET_PREBUF));
+//        Log.v("MainActivity","BASS_CONFIG_NET_PLAYLIST::"+FmlPlayer.getGlobalOptions(BASS.BASS_CONFIG_NET_PLAYLIST));
+//        Log.v("MainActivity","BASS_CONFIG_NET_READTIMEOUT::"+FmlPlayer.getGlobalOptions(BASS.BASS_CONFIG_NET_READTIMEOUT));
+//        Log.v("MainActivity","BASS_CONFIG_NET_AGENT::"+FmlPlayer.getGlobalOptions(BASS.BASS_CONFIG_NET_AGENT));
+//        Log.v("MainActivity","BASS_CONFIG_NET_PROXY::"+FmlPlayer.getGlobalOptions(BASS.BASS_CONFIG_NET_PROXY));
+
         fxController = new FmlPlayer.FxController();
 
         mCompletionListener = new PlayerListener.OnCompletionListener() {
@@ -98,7 +112,6 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
                 dismissLoadingDialog();
 
                 Toast.makeText(context, "OnPrepared", Toast.LENGTH_LONG).show();
-
                 if (fmlPlayer != null) {
                     name.setText(fmlPlayer.getAudioName());
                     fmlPlayer.play();
@@ -388,10 +401,10 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
             @Override
             public void run() {
                 if (fmlPlayer != null) {
-                    if (fmlPlayer.isStoping()) {
-                        timerTask.cancel();
-                        return;
-                    }
+//                    if (fmlPlayer.isStoping()) {
+//                        timerTask.cancel();
+//                        return;
+//                    }
 
                     double cTime = fmlPlayer.getCurrentPosition();
                     double aTime = fmlPlayer.getTotalTime();
@@ -404,7 +417,6 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
                     sb.append(aMin).append(":").append(aSec);
 
                     int buf = (int) (fmlPlayer.getBufferPercentage() / 100 * aTime);
-                    fmlPlayer.getMetaData();
                     mMianHandler.obtainMessage(HANDLER_MSG_UPDATE_PROGRESS, (int) cTime, buf, sb.toString()).sendToTarget();
                 }
             }
@@ -626,6 +638,9 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
     @Override
     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
         // TODO Auto-generated method stub
+        if (fmlPlayer == null)
+            return;
+
         if (seekBar.getId() == R.id.progress_seekbar) {
             if (fromUser) {
                 fmlPlayer.seekTo(progress);
@@ -685,15 +700,13 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
         }
 
         if (isChange) {
-            if (fmlPlayer != null) {
-                fxController.update(fmlPlayer);
-                rotate.setText(String.valueOf(fxController.getRotate()));
-                eq100.setText(String.valueOf(fxController.getGain4PeakEQ_100()));
-                eq600.setText(String.valueOf(fxController.getGain4PeakEQ_600()));
-                eq1k.setText(String.valueOf(fxController.getGain4PeakEQ_1k()));
-                eq8k.setText(String.valueOf(fxController.getGain4PeakEQ_8k()));
-                eq14k.setText(String.valueOf(fxController.getGain4PeakEQ_14k()));
-            }
+            fxController.update(fmlPlayer);
+            rotate.setText(String.valueOf(fxController.getRotate()));
+            eq100.setText(String.valueOf(fxController.getGain4PeakEQ_100()));
+            eq600.setText(String.valueOf(fxController.getGain4PeakEQ_600()));
+            eq1k.setText(String.valueOf(fxController.getGain4PeakEQ_1k()));
+            eq8k.setText(String.valueOf(fxController.getGain4PeakEQ_8k()));
+            eq14k.setText(String.valueOf(fxController.getGain4PeakEQ_14k()));
         }
     }
 
