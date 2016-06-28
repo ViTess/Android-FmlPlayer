@@ -1,9 +1,12 @@
 # Android-FmlPlayer
 
+version - 0.1.0
+
 ###概要：
 基于BASS、BASS_FX两个库的封装，可直接用于Android
 
 提供最基础的音频播放、音效处理，目前仅支持OGG、MP3、WAV格式音频
+
 支持OGG格式音频无缝循环，支持在线音频播放和下载
 
 BASS and BASS_FX Library：http://www.un4seen.com/
