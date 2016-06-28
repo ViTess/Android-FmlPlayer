@@ -435,6 +435,10 @@ public class FmlPlayer {
      */
     private PlayerListener.OnPreparedListener mPreparedListener;
     /**
+     * 下载监听事件
+     */
+    private PlayerListener.OnDownloadedListener mDownloadedListener;
+    /**
      * Handler
      */
     private FmlHandler mFmlHandler;
@@ -456,11 +460,23 @@ public class FmlPlayer {
                 mFmlHandler.sendEmptyMessage(FmlHandler.MSG_COMPLETION);
         }
     };
+    /**
+     * 设置EndSync后得到的对应的句柄，0为设置失败
+     */
+    private int mEndSyncHandle = 0;
 
     private final BASS.DOWNLOADPROC mDownloadSync = new BASS.DOWNLOADPROC() {
+        /**
+         * @param byteBuffer
+         * @param length
+         * @param user 此处的user是在StreamCreateURL时设置的用于标记
+         */
         @Override
-        public void DOWNLOADPROC(ByteBuffer byteBuffer, int i, Object o) {
-
+        public void DOWNLOADPROC(ByteBuffer byteBuffer, int length, Object user) {
+            //由于多个handle都可以对应同一个sync
+            //所以用到Object user这个变量来分辨
+            if (mDownloadedListener != null)
+                mDownloadedListener.onDownloaded(FmlPlayer.this, byteBuffer, length);
         }
     };
     /*-----------------------------------*/
@@ -478,12 +494,27 @@ public class FmlPlayer {
             Log.e(TAG, "Context is Null!");
             return;
         }
-        mFmlHandler = new FmlHandler(context.getMainLooper());
-        mSingleExecutor = Executors.newSingleThreadExecutor();
+        if (mFmlHandler == null)
+            mFmlHandler = new FmlHandler(context.getMainLooper());
+        if (mSingleExecutor == null)
+            mSingleExecutor = Executors.newSingleThreadExecutor();
+        if (mHandle != 0) {
+            BASS.BASS_StreamFree(mHandle);
+            printError("FmlPlayer()");
+        }
+
         mInfo = new BASS_CHANNELINFO();
-        BASS.BASS_StreamFree(mHandle);
-        printError("FmlPlayer()");
+
         mHandle = 0;
+        isLoop = false;
+        mTotalTime = 0;
+        mDataParam = null;
+        mVolume = 1.0f;
+        mPan = 0f;
+        mCompletionListener = null;
+        mErrorListener = null;
+        mPreparedListener = null;
+        mDownloadedListener = null;
     }
 
     /**
@@ -550,7 +581,10 @@ public class FmlPlayer {
      */
     private void setCompletionListener() {
         if (mCompletionListener != null) {
-            BASS.BASS_ChannelSetSync(mHandle, BASS.BASS_SYNC_END, 0, mEndSync, 0);
+            mEndSyncHandle = BASS.BASS_ChannelSetSync(mHandle, BASS.BASS_SYNC_END, 0, mEndSync, 0);
+            printError("setCompletionListener");
+            if (mEndSyncHandle == 0)
+                callErrorListener();
         }
     }
 
@@ -567,6 +601,10 @@ public class FmlPlayer {
 
     public void setOnPreparedListener(PlayerListener.OnPreparedListener listener) {
         this.mPreparedListener = listener;
+    }
+
+    public void setOnDownloadedListener(PlayerListener.OnDownloadedListener listener) {
+        this.mDownloadedListener = listener;
     }
 
     /**
@@ -714,53 +752,48 @@ public class FmlPlayer {
         setNetFile(url, offSet, 0);
     }
 
-    public void setNetFile(@NonNull String url, int offSet, int flag) throws IOException {
-        setNetFile(url, offSet, flag, false);
-    }
-
     /**
      * @param url
-     * @param offSet     File position to start streaming from. This is ignored by some servers, specifically when the length is unknown/undefined.
-     * @param flag       <p><li><b>BASS_SAMPLE_FLOAT</b></li>
-     *                   Use 32-bit floating-point sample data. See Floating-point channels for info.
-     *                   <li><b>BASS_SAMPLE_MONO</b></li>
-     *                   Decode/play the stream (MP3/MP2/MP1 only) in mono, reducing the CPU usage (if it was originally stereo).
-     *                   This flag is automatically applied if BASS_DEVICE_MONO was specified when calling BASS_Init.
-     *                   <li><b>BASS_SAMPLE_SOFTWARE</b></li>
-     *                   Force the stream to not use hardware mixing.
-     *                   <li><b>BASS_SAMPLE_3D</b></li>
-     *                   Enable 3D functionality. This requires that the BASS_DEVICE_3D flag was specified when calling BASS_Init,
-     *                   and the stream must be mono. The SPEAKER flags cannot be used together with this flag.
-     *                   <li><b>BASS_SAMPLE_LOOP</b></li>
-     *                   Loop the file. This flag can be toggled at any time using BASS_ChannelFlags. This flag is ignored when
-     *                   streaming in blocks (BASS_STREAM_BLOCK).
-     *                   <li><b>BASS_SAMPLE_FX</b></li>
-     *                   Enable the old implementation of DirectX 8 effects. See the DX8 effect implementations section for details.
-     *                   Use BASS_ChannelSetFX to add effects to the stream.
-     *                   <li><b>BASS_STREAM_RESTRATE</b></li>
-     *                   Restrict the download rate of the file to the rate required to sustain playback. If this flag is not
-     *                   used, then the file will be downloaded as quickly as the user's internet connection allows.
-     *                   <li><b>BASS_STREAM_BLOCK</b></li>
-     *                   Download and play the file in smaller chunks, instead of downloading the entire file to memory. Uses a
-     *                   lot less memory than otherwise, but it is not possible to seek or loop the stream; once it has ended, the file must be
-     *                   opened again to play it again. This flag will automatically be applied when the file length is unknown, for example with
-     *                   Shout/Icecast streams. This flag also has the effect of restricting the download rate.
-     *                   <li><b>BASS_STREAM_STATUS</b></li>
-     *                   Pass status info (HTTP/ICY tags) from the server to the DOWNLOADPROC callback during connection. This
-     *                   can be useful to determine the reason for a failure.
-     *                   <li><b>BASS_STREAM_AUTOFREE</b></li>
-     *                   Automatically free the stream when playback ends.
-     *                   <li><b>BASS_STREAM_DECODE</b></li>
-     *                   Decode the sample data, without playing it. Use BASS_ChannelGetData to retrieve decoded sample data. The
-     *                   BASS_SAMPLE_3D, BASS_STREAM_AUTOFREE and SPEAKER flags cannot be used together with this flag. The BASS_SAMPLE_SOFTWARE
-     *                   and BASS_SAMPLE_FX flags are also ignored.
-     *                   <li><b>BASS_SPEAKER_xxx</b></li>
-     *                   Speaker assignment flags. These flags have no effect when the stream is more than stereo.
-     *                   <li><b>BASS_UNICODE</b></li>
-     *                   url is in UTF-16 form. Otherwise it is ANSI on Windows or Windows CE, and UTF-8 on other platforms.</p>
-     * @param isDownload
+     * @param offSet File position to start streaming from. This is ignored by some servers, specifically when the length is unknown/undefined.
+     * @param flag   <p><li><b>BASS_SAMPLE_FLOAT</b></li>
+     *               Use 32-bit floating-point sample data. See Floating-point channels for info.
+     *               <li><b>BASS_SAMPLE_MONO</b></li>
+     *               Decode/play the stream (MP3/MP2/MP1 only) in mono, reducing the CPU usage (if it was originally stereo).
+     *               This flag is automatically applied if BASS_DEVICE_MONO was specified when calling BASS_Init.
+     *               <li><b>BASS_SAMPLE_SOFTWARE</b></li>
+     *               Force the stream to not use hardware mixing.
+     *               <li><b>BASS_SAMPLE_3D</b></li>
+     *               Enable 3D functionality. This requires that the BASS_DEVICE_3D flag was specified when calling BASS_Init,
+     *               and the stream must be mono. The SPEAKER flags cannot be used together with this flag.
+     *               <li><b>BASS_SAMPLE_LOOP</b></li>
+     *               Loop the file. This flag can be toggled at any time using BASS_ChannelFlags. This flag is ignored when
+     *               streaming in blocks (BASS_STREAM_BLOCK).
+     *               <li><b>BASS_SAMPLE_FX</b></li>
+     *               Enable the old implementation of DirectX 8 effects. See the DX8 effect implementations section for details.
+     *               Use BASS_ChannelSetFX to add effects to the stream.
+     *               <li><b>BASS_STREAM_RESTRATE</b></li>
+     *               Restrict the download rate of the file to the rate required to sustain playback. If this flag is not
+     *               used, then the file will be downloaded as quickly as the user's internet connection allows.
+     *               <li><b>BASS_STREAM_BLOCK</b></li>
+     *               Download and play the file in smaller chunks, instead of downloading the entire file to memory. Uses a
+     *               lot less memory than otherwise, but it is not possible to seek or loop the stream; once it has ended, the file must be
+     *               opened again to play it again. This flag will automatically be applied when the file length is unknown, for example with
+     *               Shout/Icecast streams. This flag also has the effect of restricting the download rate.
+     *               <li><b>BASS_STREAM_STATUS</b></li>
+     *               Pass status info (HTTP/ICY tags) from the server to the DOWNLOADPROC callback during connection. This
+     *               can be useful to determine the reason for a failure.
+     *               <li><b>BASS_STREAM_AUTOFREE</b></li>
+     *               Automatically free the stream when playback ends.
+     *               <li><b>BASS_STREAM_DECODE</b></li>
+     *               Decode the sample data, without playing it. Use BASS_ChannelGetData to retrieve decoded sample data. The
+     *               BASS_SAMPLE_3D, BASS_STREAM_AUTOFREE and SPEAKER flags cannot be used together with this flag. The BASS_SAMPLE_SOFTWARE
+     *               and BASS_SAMPLE_FX flags are also ignored.
+     *               <li><b>BASS_SPEAKER_xxx</b></li>
+     *               Speaker assignment flags. These flags have no effect when the stream is more than stereo.
+     *               <li><b>BASS_UNICODE</b></li>
+     *               url is in UTF-16 form. Otherwise it is ANSI on Windows or Windows CE, and UTF-8 on other platforms.</p>
      */
-    public void setNetFile(@NonNull String url, int offSet, int flag, boolean isDownload) throws IOException {
+    public void setNetFile(@NonNull String url, int offSet, int flag) throws IOException {
         if (url.startsWith("http://") || url.startsWith("https://")) {
             int mFlag = flag;
             if (mFlag != BASS.BASS_STREAM_STATUS)
@@ -812,7 +845,7 @@ public class FmlPlayer {
         }
     }
 
-    public void prepareSync() {
+    public void prepareAsync() {
         if (mSingleExecutor != null && !mSingleExecutor.isShutdown()) {
             mSingleExecutor.execute(new Runnable() {
                 @Override
@@ -967,7 +1000,7 @@ public class FmlPlayer {
 
     /**
      * 播放网络音频时，使用该方法获取当前缓冲百分比
-     * 注意：在播放音频时如果设置了offSet，方法中调用的获取文件长度的方法也会相应改变掉
+     * 注意：在播放音频时如果设置了offSet，方法中调用的获取文件长度的方法也会相应改变
      * <p/>
      * get the percentage of buffer when you play online audio
      *
@@ -1121,17 +1154,28 @@ public class FmlPlayer {
         return null;
     }
 
+    private void reset_() {
+        isLoop = false;
+        mTotalTime = 0;
+        mDataParam = null;
+        mVolume = 1.0f;
+        mPan = 0f;
+        mInfo = null;
+        mCompletionListener = null;
+        mErrorListener = null;
+        mPreparedListener = null;
+        mDownloadedListener = null;
+        BASS.BASS_StreamFree(mHandle);
+        mHandle = 0;
+    }
+
     /**
      * reset 重置状态
      */
     public void reset() {
-        //如果此时在加载网络音频，要注意等音频结束再release，不然不知道会发生什么
+        stop();
         synchronized (this) {
-            mTotalTime = 0;
-            mDataParam = null;
-            mVolume = 1.0f;
-            mPan = 0f;
-            mInfo = null;
+            reset_();
         }
     }
 
@@ -1148,11 +1192,9 @@ public class FmlPlayer {
                 mSingleExecutor.shutdownNow();
                 mSingleExecutor = null;
             }
-            BASS.BASS_StreamFree(mHandle);
-            mCompletionListener = null;
-            mErrorListener = null;
-            mPreparedListener = null;
-            mHandle = 0;
+            if (mHandle != 0 && mEndSyncHandle != 0)
+                BASS.BASS_ChannelRemoveSync(mHandle, mEndSyncHandle);
+            reset_();
             return printError("release");
         }
     }
@@ -1353,10 +1395,6 @@ public class FmlPlayer {
          * valve - HandlePair<Integer, BASS_BFX_PEAKEQ>
          */
         private SparseArray<HandlePair<Integer, BASS_BFX_PEAKEQ>> mPeakEQList;
-//        /**
-//         * 每个对象的音效FX句柄<br>
-//         */
-//        private SparseArray<Integer> mFxHandleList;
         /**
          * player对应的handle句柄
          */
@@ -1365,7 +1403,6 @@ public class FmlPlayer {
         private boolean isFXOpen = false;
 
         public FxController() {
-//            mFxHandleList = new SparseArray<>();
         }
 
         /**
