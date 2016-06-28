@@ -5,6 +5,7 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.text.TextUtils;
@@ -27,8 +28,12 @@ import com.un4seen.bass.BASS;
 import com.vite.audiolibrary.FmlPlayer;
 import com.vite.audiolibrary.PlayerListener;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -54,10 +59,15 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
     PlayerListener.OnCompletionListener mCompletionListener;
     PlayerListener.OnPreparedListener mPreparedListener;
     PlayerListener.OnErrorListener mErrorListener;
+    PlayerListener.OnDownloadedListener mDownloadedListener;
 
     Timer timer;
     TimerTask timerTask;
     MainHandler mMianHandler;
+
+    FileChannel mFChannel;
+    File saveFile;
+    String saveFilePath = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -139,6 +149,27 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
                 stopTimerTask();
             }
         };
+
+        mDownloadedListener = new PlayerListener.OnDownloadedListener() {
+            @Override
+            public void onDownloaded(FmlPlayer fp, ByteBuffer buffer, int length) {
+                try {
+                    if (buffer != null && length != 0) {
+                        if (mFChannel == null)
+                            mFChannel = new FileOutputStream(saveFile).getChannel();
+                        mFChannel.write(buffer);
+                        Log.v("onDownloaded", "length::" + length);
+                    } else if (mFChannel != null) {
+                        mFChannel.close();
+                        mFChannel = null;
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        };
+
+        saveFilePath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/TestAudio/";
     }
 
     private void initView() {
@@ -352,8 +383,19 @@ public class MainActivity extends Activity implements OnClickListener, OnChecked
                     fmlPlayer.setOnCompletionListener(mCompletionListener);
                     fmlPlayer.setOnPreparedListener(mPreparedListener);
                     fmlPlayer.setOnErrorListener(mErrorListener);
+                    fmlPlayer.setOnDownloadedListener(mDownloadedListener);
 
-                    fmlPlayer.prepareSync();
+                    saveFile = new File(saveFilePath);
+                    if (!saveFile.exists())
+                        saveFile.mkdir();
+
+                    saveFilePath += fmlPlayer.getAudioName();
+                    saveFile = new File(saveFilePath);
+                    if (saveFile.exists())
+                        saveFile.delete();
+                    saveFile.createNewFile();
+
+                    fmlPlayer.prepareAsync();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
