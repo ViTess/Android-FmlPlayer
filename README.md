@@ -1,7 +1,7 @@
 # Android-FmlPlayer
 version - 0.1.0
 
-###概要
+### 概要
 基于BASS、BASS_FX两个库的封装，可直接用于Android
 
 提供最基础的音频播放、部分音效处理，目前仅支持OGG、MP3、WAV格式音频
@@ -10,7 +10,7 @@ version - 0.1.0
 
 BASS and BASS_FX Library：*http://www.un4seen.com/*
 
-###如何使用
+### 如何使用
   
 * **导入**
 
@@ -68,7 +68,7 @@ BASS and BASS_FX Library：*http://www.un4seen.com/*
     
     而在不需要再次播放音频后，请使用`mPlayer.release()`释放资源
     
-####使用Fx功能
+#### 使用Fx功能
     
 Fx功能是通过封装BASS_FX库实现的，目前可支持的音效有：
 
@@ -96,11 +96,11 @@ mFxCtrl.update(mPlayer);
 
 每一项音效对应的参数都有多种，可以自己调♂教；同时部分音效有预设了部分设置在其中提供调用，详细请参考demo中的例子
 
-##TODO
+## TODO
 
 在有时间的前提下，会逐步添加完善其他功能，如增加可支持音频类型的相关库类、增加TAG的读取支持等
 
-##Update Record
+## Update Record
     160628：
         1. 增加在线音频播放、下载功能
         2. 增加相关网络参数设置
